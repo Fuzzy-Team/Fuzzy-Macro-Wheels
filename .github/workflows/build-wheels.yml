@@ -40,15 +40,11 @@ jobs:
             requirement: opencv-python==4.6.0.66
             # Skip OpenCV's Java detection (it makes macOS ask for a JDK); build Intel only
             cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64
-            # OpenCV 4.6's bundled zlib defines fdopen as NULL on Macs, which breaks newer
-            # SDK headers; defining it as itself makes zlib leave it alone
-            cflags: -Dfdopen=fdopen
             test_requirements: numpy<2
           # The only macOS wheel is for 10.14
           - package: aiohttp
             requirement: aiohttp==3.7.4.post0
             cmake_args: ""
-            cflags: ""
             test_requirements: ""
 
     steps:
@@ -64,14 +60,19 @@ jobs:
       - name: Build ${{ matrix.requirement }} from source
         env:
           CMAKE_ARGS: ${{ matrix.cmake_args }}
-          CFLAGS: ${{ matrix.cflags }}
           CMAKE_BUILD_PARALLEL_LEVEL: "4"
           ARCHFLAGS: -arch x86_64
         run: |
           "$PYTHON" -m venv build-env
           build-env/bin/python -m pip install --upgrade pip wheel
-          build-env/bin/python -m pip wheel --no-deps --no-binary "${{ matrix.package }}" \
-            --wheel-dir dist "${{ matrix.requirement }}"
+          build-env/bin/python -m pip download --no-deps --no-binary :all: --dest sdist "${{ matrix.requirement }}"
+          mkdir src && tar -xzf sdist/*.tar.gz -C src
+          source_dir=$(echo src/*)
+          # patches/<package>.sh fixes sources that don't build with the runner's Xcode
+          if [ -f "patches/${{ matrix.package }}.sh" ]; then
+            bash "patches/${{ matrix.package }}.sh" "$source_dir"
+          fi
+          build-env/bin/python -m pip wheel --no-deps --wheel-dir dist "./$source_dir"
           ls -la dist
 
       - name: Check the wheel runs on macOS ${{ env.MACOSX_DEPLOYMENT_TARGET }}

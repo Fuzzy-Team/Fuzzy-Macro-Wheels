@@ -26,7 +26,9 @@ Actions → **Build legacy macOS wheels** → **Run workflow**.
 Each build runs on GitHub's Intel macOS runner (`macos-15-intel`) and:
 
 1. Installs the same python.org Python 3.7.9 package the installer uses (hash-checked).
-2. Builds the wheel from source with `MACOSX_DEPLOYMENT_TARGET=10.12`.
+2. Downloads the source package, applies `patches/<package>.sh` if there is one, and builds
+   the wheel with `MACOSX_DEPLOYMENT_TARGET=10.12`. OpenCV 4.6's bundled zlib and libpng
+   need a two-line patch to compile with current Xcode (see `patches/opencv-python.sh`).
 3. Runs `scripts/check_wheel.py`, which fails the build if any binary isn't x86_64, needs a
    macOS newer than 10.12, or links a library that isn't part of macOS or the wheel.
 4. Installs the wheel into a fresh venv and runs `scripts/smoke_test.py`, which uses the
@@ -63,4 +65,5 @@ pip checks the `#sha256=` fragment and refuses a file that doesn't match.
 ## Adding a package
 
 Add an entry to the `matrix` in `.github/workflows/build-wheels.yml` and a test to
-`scripts/smoke_test.py`.
+`scripts/smoke_test.py`. If its source needs fixes to build, add `patches/<package>.sh`,
+which gets the extracted source directory as its argument.
