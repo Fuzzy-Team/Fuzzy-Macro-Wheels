@@ -40,11 +40,15 @@ jobs:
             requirement: opencv-python==4.6.0.66
             # Skip OpenCV's Java detection (it makes macOS ask for a JDK); build Intel only
             cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64
+            # OpenCV 4.6's bundled zlib defines fdopen as NULL on Macs, which breaks newer
+            # SDK headers; defining it as itself makes zlib leave it alone
+            cflags: -Dfdopen=fdopen
             test_requirements: numpy<2
           # The only macOS wheel is for 10.14
           - package: aiohttp
             requirement: aiohttp==3.7.4.post0
             cmake_args: ""
+            cflags: ""
             test_requirements: ""
 
     steps:
@@ -60,6 +64,7 @@ jobs:
       - name: Build ${{ matrix.requirement }} from source
         env:
           CMAKE_ARGS: ${{ matrix.cmake_args }}
+          CFLAGS: ${{ matrix.cflags }}
           CMAKE_BUILD_PARALLEL_LEVEL: "4"
           ARCHFLAGS: -arch x86_64
         run: |
