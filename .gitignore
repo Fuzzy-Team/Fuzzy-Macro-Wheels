@@ -1,0 +1,5 @@
+dist/
+build-env/
+test-env/
+__pycache__/
+*.pkg

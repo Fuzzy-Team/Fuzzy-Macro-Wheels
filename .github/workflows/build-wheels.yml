@@ -1,0 +1,121 @@
+name: Build legacy macOS wheels
+
+# Builds the wheels Fuzzy Macro's installer otherwise compiles on users' Macs below
+# macOS 10.15, for the same Python they get (python.org 3.7.9, Intel).
+#
+# Run it from the Actions tab. Leave "release_tag" empty for a test build (wheels are
+# uploaded as a workflow artifact only); set it, e.g. "legacy-macos-1", to publish them
+# to a GitHub Release the installer can download from.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish to (empty = test build, artifact only)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  # The oldest macOS Fuzzy Macro supports on Intel
+  MACOSX_DEPLOYMENT_TARGET: "10.12"
+  # What install_dependencies.command installs for macOS below 10.15
+  PYTHON_PKG_URL: https://www.python.org/ftp/python/3.7.9/python-3.7.9-macosx10.9.pkg
+  PYTHON_PKG_SHA256: bf54a14eef23467991e8c7a88c7307762e484c024a94ec1ee292ac1db3d41fc9
+  PYTHON: /Library/Frameworks/Python.framework/Versions/3.7/bin/python3.7
+
+jobs:
+  build:
+    name: ${{ matrix.package }}
+    runs-on: macos-15-intel
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # No Intel wheel below macOS 10.15, so pip builds it from source (an hour or more)
+          - package: opencv-python
+            requirement: opencv-python==4.6.0.66
+            # Skip OpenCV's Java detection (it makes macOS ask for a JDK); build Intel only
+            cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64
+            test_requirements: numpy<2
+          # The only macOS wheel is for 10.14
+          - package: aiohttp
+            requirement: aiohttp==3.7.4.post0
+            cmake_args: ""
+            test_requirements: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install python.org Python 3.7.9
+        run: |
+          curl -fsSLo python.pkg "$PYTHON_PKG_URL"
+          echo "$PYTHON_PKG_SHA256  python.pkg" | shasum -a 256 -c
+          sudo installer -pkg python.pkg -target /
+          "$PYTHON" -c "import platform, sys; print(sys.version); print(platform.machine())"
+
+      - name: Build ${{ matrix.requirement }} from source
+        env:
+          CMAKE_ARGS: ${{ matrix.cmake_args }}
+          CMAKE_BUILD_PARALLEL_LEVEL: "4"
+          ARCHFLAGS: -arch x86_64
+        run: |
+          "$PYTHON" -m venv build-env
+          build-env/bin/python -m pip install --upgrade pip wheel
+          build-env/bin/python -m pip wheel --no-deps --no-binary "${{ matrix.package }}" \
+            --wheel-dir dist "${{ matrix.requirement }}"
+          ls -la dist
+
+      - name: Check the wheel runs on macOS ${{ env.MACOSX_DEPLOYMENT_TARGET }}
+        run: python3 scripts/check_wheel.py --max-macos "$MACOSX_DEPLOYMENT_TARGET" dist/*.whl
+
+      - name: Smoke test
+        run: |
+          "$PYTHON" -m venv test-env
+          test-env/bin/python -m pip install --upgrade pip
+          # install the built file itself; given a choice, pip would prefer PyPI's newer-macOS wheel
+          test-env/bin/python -m pip install dist/*.whl ${{ matrix.test_requirements && format('"{0}"', matrix.test_requirements) || '' }}
+          cd scripts && ../test-env/bin/python smoke_test.py "${{ matrix.package }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.package }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: ${{ inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to release ${{ inputs.release_tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          cd dist
+          sha256sum *.whl > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo "Wheels for Fuzzy Macro on Intel Macs below macOS 10.15 (python.org Python 3.7.9),"
+            echo "built for macOS $MACOSX_DEPLOYMENT_TARGET by run ${{ github.run_id }}."
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > notes.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" *.whl SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" *.whl SHA256SUMS --title "$TAG" --notes-file notes.md \
+              --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
+          fi
