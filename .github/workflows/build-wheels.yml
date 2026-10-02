@@ -61,12 +61,17 @@ jobs:
         env:
           CMAKE_ARGS: ${{ matrix.cmake_args }}
           CMAKE_BUILD_PARALLEL_LEVEL: "4"
+          REQUIREMENT: ${{ matrix.requirement }}
           ARCHFLAGS: -arch x86_64
         run: |
           "$PYTHON" -m venv build-env
           build-env/bin/python -m pip install --upgrade pip wheel
-          build-env/bin/python -m pip download --no-deps --no-binary :all: --dest sdist "${{ matrix.requirement }}"
-          mkdir src && tar -xzf sdist/*.tar.gz -C src
+          # fetch the source package from PyPI and check it against PyPI's published hash
+          read -r sdist_url sdist_sha256 < <(curl -fsSL "https://pypi.org/pypi/${{ matrix.package }}/${REQUIREMENT#*==}/json" \
+            | python3 -c "import json, sys; u = next(u for u in json.load(sys.stdin)['urls'] if u['packagetype'] == 'sdist'); print(u['url'], u['digests']['sha256'])")
+          curl -fsSLo sdist.tar.gz "$sdist_url"
+          echo "$sdist_sha256  sdist.tar.gz" | shasum -a 256 -c
+          mkdir src && tar -xzf sdist.tar.gz -C src
           source_dir=$(echo src/*)
           # patches/<package>.sh fixes sources that don't build with the runner's Xcode
           if [ -f "patches/${{ matrix.package }}.sh" ]; then
