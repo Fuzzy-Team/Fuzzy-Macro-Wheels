@@ -28,6 +28,8 @@ def opencv():
     ok, encoded = cv2.imencode(".png", bgr)
     assert ok and cv2.imdecode(encoded, cv2.IMREAD_COLOR).shape == bgr.shape
     print(f"cv2 {cv2.__version__}: template matching, colour conversion, components, dnn blobs and PNG work")
+    from test_models import opencv_models
+    opencv_models()
 
 
 def aiohttp():
