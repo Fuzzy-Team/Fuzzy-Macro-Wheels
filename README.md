@@ -8,7 +8,7 @@ packages have no wheel for it on PyPI, so pip compiles them on the user's Mac:
 
 | Package | Why it builds from source | Cost on the user's Mac |
 | --- | --- | --- |
-| `opencv-python==4.6.0.66` | No Intel macOS wheel below 10.15 | An hour or more, and a "you need to install a JDK" popup |
+| `opencv-python==4.11.0.86` | No Intel macOS wheel for 10.12 | A lengthy source build |
 | `aiohttp==3.7.4.post0` | The only macOS wheel is for 10.14 | A few minutes on 10.12–10.13 |
 
 This repo builds them once, for macOS 10.12 and Python 3.7.9 on Intel, and publishes them to
@@ -27,12 +27,19 @@ Each build runs on GitHub's Intel macOS runner (`macos-15-intel`) and:
 
 1. Installs the same python.org Python 3.7.9 package the installer uses (hash-checked).
 2. Downloads the source package, applies `patches/<package>.sh` if there is one, and builds
-   the wheel with `MACOSX_DEPLOYMENT_TARGET=10.12`. OpenCV 4.6's bundled zlib and libpng
-   need a two-line patch to compile with current Xcode (see `patches/opencv-python.sh`).
+   the wheel with `MACOSX_DEPLOYMENT_TARGET=10.12`. OpenCV 4.11 contains the zlib and libpng
+   fixes that the previous 4.6 build patched locally. Optional AVIF support is disabled so
+   the wheel does not depend on the runner's Homebrew libavif. PNG and JPEG remain enabled.
 3. Runs `scripts/check_wheel.py`, which fails the build if any binary isn't x86_64, needs a
    macOS newer than 10.12, or links a library that isn't part of macOS or the wheel.
 4. Installs the wheel into a fresh venv and runs `scripts/smoke_test.py`, which uses the
-   compiled code the way Fuzzy Macro does.
+   compiled code the way Fuzzy Macro does. The OpenCV test also downloads all five supported
+   ONNX models from a pinned commit, checks their content hashes, and runs inference at the
+   macro's input sizes. It verifies both classic and end2end output formats.
+
+OpenCV 4.6 in `legacy-macos-1` cannot load the current AI models. OpenCV 4.10 also lacks
+the token and sprinkler models' TopK operator. OpenCV 4.11 passes those engine checks.
+New releases remain prereleases until they pass a runtime test on a real old Mac.
 
 ## Before the installer uses a release
 
