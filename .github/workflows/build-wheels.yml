@@ -1,7 +1,7 @@
 name: Build legacy macOS wheels
 
 # Builds the wheels Fuzzy Macro's installer otherwise compiles on users' Macs below
-# macOS 10.15, for the same Python they get (python.org 3.7.9, Intel).
+# macOS 10.15, for python.org Python 3.7.9 and 3.8.0 on Intel.
 #
 # Run it from the Actions tab. Leave "release_tag" empty for a test build (wheels are
 # uploaded as a workflow artifact only); set it, e.g. "legacy-macos-1", to publish them
@@ -21,36 +21,46 @@ permissions:
 env:
   # The oldest macOS Fuzzy Macro supports on Intel
   MACOSX_DEPLOYMENT_TARGET: "10.12"
-  # What install_dependencies.command installs for macOS below 10.15
-  PYTHON_PKG_URL: https://www.python.org/ftp/python/3.7.9/python-3.7.9-macosx10.9.pkg
-  PYTHON_PKG_SHA256: bf54a14eef23467991e8c7a88c7307762e484c024a94ec1ee292ac1db3d41fc9
-  PYTHON: /Library/Frameworks/Python.framework/Versions/3.7/bin/python3.7
 
 jobs:
   build:
-    name: ${{ matrix.package }}
+    name: ${{ matrix.package }} / Python ${{ matrix.python.version }}
     runs-on: macos-15-intel
     timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
+        python:
+          - version: "3.7"
+            release: "3.7.9"
+            sha256: bf54a14eef23467991e8c7a88c7307762e484c024a94ec1ee292ac1db3d41fc9
+          - version: "3.8"
+            release: "3.8.0"
+            sha256: 30961fe060da9dc5afdc4e789a57fe9bcc0d20244474e9f095d7bfc89d2e1869
+        package: [opencv-python, aiohttp]
         include:
           # No Intel wheel below macOS 10.15, so pip builds it from source (an hour or more)
           - package: opencv-python
             requirement: opencv-python==4.11.0.86
             # Skip Java detection and optional AVIF, which would link the runner's Homebrew libavif.
             cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DPYTHON3_LIMITED_API=ON -DWITH_AVIF=OFF
-            test_requirements: numpy<2
+            # NumPy 1.21.6 has Intel macOS 10.9 wheels for both Python versions.
+            test_requirements: numpy==1.21.6
           # The only macOS wheel is for 10.14
           - package: aiohttp
             requirement: aiohttp==3.7.4.post0
             cmake_args: ""
             test_requirements: ""
 
+    env:
+      PYTHON_PKG_URL: https://www.python.org/ftp/python/${{ matrix.python.release }}/python-${{ matrix.python.release }}-macosx10.9.pkg
+      PYTHON_PKG_SHA256: ${{ matrix.python.sha256 }}
+      PYTHON: /Library/Frameworks/Python.framework/Versions/${{ matrix.python.version }}/bin/python${{ matrix.python.version }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install python.org Python 3.7.9
+      - name: Install python.org Python ${{ matrix.python.release }}
         run: |
           curl -fsSLo python.pkg "$PYTHON_PKG_URL"
           echo "$PYTHON_PKG_SHA256  python.pkg" | shasum -a 256 -c
@@ -65,7 +75,7 @@ jobs:
           ARCHFLAGS: -arch x86_64
         run: |
           "$PYTHON" -m venv build-env
-          build-env/bin/python -m pip install --upgrade pip wheel
+          build-env/bin/python -m pip install --upgrade "pip==24.0" wheel
           # fetch the source package from PyPI and check it against PyPI's published hash
           read -r sdist_url sdist_sha256 < <(curl -fsSL "https://pypi.org/pypi/${{ matrix.package }}/${REQUIREMENT#*==}/json" \
             | python3 -c "import json, sys; u = next(u for u in json.load(sys.stdin)['urls'] if u['packagetype'] == 'sdist'); print(u['url'], u['digests']['sha256'])")
@@ -86,14 +96,15 @@ jobs:
       - name: Smoke test
         run: |
           "$PYTHON" -m venv test-env
-          test-env/bin/python -m pip install --upgrade pip
+          test-env/bin/python -m pip install --upgrade "pip==24.0"
+          test-env/bin/python -c "import platform, sys; print(sys.version); print(platform.machine())"
           # install the built file itself; given a choice, pip would prefer PyPI's newer-macOS wheel
           test-env/bin/python -m pip install dist/*.whl ${{ matrix.test_requirements && format('"{0}"', matrix.test_requirements) || '' }}
           cd scripts && ../test-env/bin/python smoke_test.py "${{ matrix.package }}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.package }}
+          name: wheel-${{ matrix.package }}-python${{ matrix.python.version }}
           path: dist/*.whl
           if-no-files-found: error
 
@@ -117,8 +128,13 @@ jobs:
           sha256sum *.whl > SHA256SUMS
           cat SHA256SUMS
           {
-            echo "Wheels for Fuzzy Macro on Intel Macs below macOS 10.15 (python.org Python 3.7.9),"
+            echo "Wheels for Fuzzy Macro on Intel Macs with Python 3.7 or 3.8,"
             echo "built for macOS $MACOSX_DEPLOYMENT_TARGET by run ${{ github.run_id }}."
+            echo
+            echo "Choose cp37-cp37m wheels for Python 3.7, or cp38-cp38 wheels for Python 3.8."
+            echo "Each package must match the Python version in your virtual environment."
+            echo "Both versions passed binary portability checks and smoke tests on GitHub's Intel runner."
+            echo "OpenCV ran all five AI models. Real macOS 10.12 runtime testing is still outstanding."
             echo
             echo '```'
             cat SHA256SUMS
