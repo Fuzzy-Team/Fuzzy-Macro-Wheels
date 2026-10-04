@@ -38,8 +38,8 @@ jobs:
           # No Intel wheel below macOS 10.15, so pip builds it from source (an hour or more)
           - package: opencv-python
             requirement: opencv-python==4.11.0.86
-            # Skip OpenCV's Java detection (it makes macOS ask for a JDK); build Intel only
-            cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DPYTHON3_LIMITED_API=ON
+            # Skip Java detection and optional AVIF, which would link the runner's Homebrew libavif.
+            cmake_args: -DBUILD_JAVA=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DPYTHON3_LIMITED_API=ON -DWITH_AVIF=OFF
             test_requirements: numpy<2
           # The only macOS wheel is for 10.14
           - package: aiohttp

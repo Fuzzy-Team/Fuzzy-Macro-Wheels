@@ -28,7 +28,8 @@ Each build runs on GitHub's Intel macOS runner (`macos-15-intel`) and:
 1. Installs the same python.org Python 3.7.9 package the installer uses (hash-checked).
 2. Downloads the source package, applies `patches/<package>.sh` if there is one, and builds
    the wheel with `MACOSX_DEPLOYMENT_TARGET=10.12`. OpenCV 4.11 contains the zlib and libpng
-   fixes that the previous 4.6 build patched locally.
+   fixes that the previous 4.6 build patched locally. Optional AVIF support is disabled so
+   the wheel does not depend on the runner's Homebrew libavif. PNG and JPEG remain enabled.
 3. Runs `scripts/check_wheel.py`, which fails the build if any binary isn't x86_64, needs a
    macOS newer than 10.12, or links a library that isn't part of macOS or the wheel.
 4. Installs the wheel into a fresh venv and runs `scripts/smoke_test.py`, which uses the
