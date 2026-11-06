@@ -1,7 +1,8 @@
 # Fuzzy Macro Wheels
 
 Prebuilt Python wheels for [Fuzzy Macro](https://github.com/Fuzzy-Team/Fuzzy-Macro) on
-Intel Macs below macOS 10.15.
+Intel Macs on macOS 10.12 to 11. The wheels are built for macOS 10.12, so they install on
+anything newer too.
 
 On those Macs, `install_dependencies.command` installs python.org Python 3.7.9, and two
 packages have no wheel for it on PyPI, so pip compiles them on the user's Mac:
@@ -46,8 +47,11 @@ Each build runs on GitHub's Intel macOS runner (`macos-15-intel`) and:
    ONNX models from a pinned commit, checks their content hashes, and runs inference at the
    macro's input sizes. It verifies both classic and end2end output formats.
 
-OpenCV 4.6 in `legacy-macos-1` cannot load the current AI models. OpenCV 4.10 also lacks
-the token and sprinkler models' TopK operator. OpenCV 4.11 passes those engine checks.
+OpenCV 4.6 and 4.7 cannot load the current AI models. OpenCV 4.8 and later load and run all
+of them (checked with 4.8.1, 4.9.0, 4.10.0 and 4.11.0). The token and sprinkler models used to
+need the TopK operator, which 4.10 lacks, but they were re-exported to load in 4.10.
+PyPI has no Intel wheel of 4.8 or later below macOS 11, and its 4.10 and later wheels need
+macOS 12. This repo builds 4.11 so macOS 10.12 to 11 get a version that runs the models.
 New releases remain prereleases until they pass a runtime test on a real old Mac.
 
 ## Before the installer uses a release
@@ -72,12 +76,14 @@ For Python 3.8, create the test environment with `python3.8` and select the
 
 ## Using a release in the installer
 
-Install the wheel by URL with its hash, and fall back to building from source if the
-download fails, for example:
+The installer in Fuzzy Macro (`install_dependencies.command`) installs the OpenCV wheel by URL
+with its hash on Intel Macs from 10.12 to 11. If the download or install fails, it falls back
+to PyPI (4.9.0.80 on macOS 11, 4.6.0.66 on 10.15) or to building 4.6.0.66 from source below
+10.15. For example:
 
 ```bash
 OPENCV_WHEEL="https://github.com/Fuzzy-Team/Fuzzy-Macro-Wheels/releases/download/<tag>/<opencv wheel>#sha256=<hash>"
-install_pip_package "$OPENCV_WHEEL" || install_pip_package "opencv-python==4.6.0.66"
+install_pip_package "$OPENCV_WHEEL" "--force-reinstall" || install_pip_package "opencv-python==4.6.0.66"
 ```
 
 pip checks the `#sha256=` fragment and refuses a file that doesn't match.
